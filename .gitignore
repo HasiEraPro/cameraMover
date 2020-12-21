@@ -148,3 +148,5 @@ bin/preproc/ctags_target_for_gcc_minus_e.cpp
 bin/sketch/cameraMoverver1.ino.cpp
 bin/sketch/cameraMoverver1.ino.cpp.d
 bin/sketch/cameraMoverver1.ino.cpp.o
+bin/libraries/rc-switch/RCSwitch.cpp.d
+bin/libraries/rc-switch/RCSwitch.cpp.o
