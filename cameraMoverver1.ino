@@ -14,7 +14,7 @@ const uint8_t enR = 4;  // H-bridge enable pin 2 -> R_EN
 //Pin Kameratrigger
 const uint8_t trig = 15; //camera trigger
 
-const uint8_t reedSensorPin = A0; //without function, in the past trigger button for manual use
+const int reedSensorPin = A0; //without function, in the past trigger button for manual use
 //wheel encoder GPIO16(used for inerrupts) digitally D0 
 const uint8_t encoderPin = 16  ;
  //////////////
@@ -25,10 +25,13 @@ const uint8_t encoderPin = 16  ;
 
 // this are my variable for the speed of the motor. At the moment it start moving at 240
 uint16_t mspeed = 0;
-uint16_t sensorValue = 0;
+int sensorValue = 0;
 uint16_t encdCount = 0;
 uint16_t currentPWMvalueMotor = 100;
-bool isReachedStart = false;
+
+bool initiateComplete = false;
+uint16_t movingSpeed = 250;
+
 //////////////Function prototype//////////////////////
 
 void motor_clockwise(int speed);
@@ -60,19 +63,29 @@ void setup()
 
   Serial.println("start");
 
-  attachInterrupt(digitalPinToInterrupt(encoderPin), ISR, RISING);
 
-  initiate();
+
+  
+    motor_clockwise(100);
+
+
+  //attachInterrupt(digitalPinToInterrupt(encoderPin), ISR, RISING);
 
 }
 
 void loop()
 {
 
-
-
+     
 
 }
+
+
+
+
+
+
+
 
 void motor_clockwise(int speed)
 //move motor clockwise
@@ -102,6 +115,7 @@ sensorValue = analogRead(reedSensorPin);
 ICACHE_RAM_ATTR void ISR()
 {
 
+
   encdCount++;
 
 }
@@ -125,7 +139,16 @@ void StillPhoto()
 
 void MovingPhoto()
 {
+bool isWorkDone = false;
+if(!initiateComplete)initiate();
+while(!isWorkDone)
+{
 
+
+motor_clockwise(movingSpeed);
+
+
+}
 
 
 
@@ -140,42 +163,32 @@ for (int i = currentPWMvalueMotor ; i >=0 ;i=i-30 )
 motor_clockwise(i);
 
 }
+
 Serial.print("m slow stop encode count:");Serial.println(encdCount);
 
 }
 
 void initiate()
 {
+bool isReachedStart = false;
 
 while(!isReachedStart)
 {
 motor_clockwise(currentPWMvalueMotor);
-uint16_t tempSensorValue = analogRead(reedSensorPin);
-if(tempSensorValue > 1022)
+sensorValue = analogRead(reedSensorPin);
+if(sensorValue > 1022)
 {
 
 isReachedStart = true;
-encdCount =0;
+encdCount = 0;
 
 }
-
- if (mySwitch.available()) 
- {
-   digitalWrite(LED_BUILTIN, HIGH); // changing the state of the build in led
- if (mySwitch.getReceivedValue() == 1394005)
-  {
-      isReachedStart = true;
-      encdCount =0;
-    }
-
-     mySwitch.resetAvailable();
- }
-
 
 
 }
 motorStopSlowly();
 
+initiateComplete = true;
 
 
 
