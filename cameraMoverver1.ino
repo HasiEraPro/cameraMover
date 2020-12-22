@@ -17,7 +17,17 @@ const uint8_t trig = 15; //camera trigger
 const int reedSensorPin = A0; //without function, in the past trigger button for manual use
 //wheel encoder GPIO16(used for inerrupts) digitally D0 
 
+//photos per round
+uint16_t photosPerRound = 10;
+uint16_t photosTaken = 0;
+//steps per round
+uint16_t  stepsPerRound = 600;
+//steps to travel to take the next photo
+uint16_t stepsToTravel  = stepsPerRound/photosPerRound;
 
+//desired speed for moving photo from pwm
+uint16_t MovingPhotoSpeed = 500;
+uint16_t MovingPhotoAcceleration = 25;
 
 
 ///////////////////////////////////////////
@@ -38,7 +48,7 @@ unsigned long previousMicros;
 
 void motor_clockwise(int speed);
 void initiate();
-void motorStopSlowly();
+void motorStopSlowly(uint16_t PwmSpeed);
 void ICACHE_RAM_ATTR ISR();
 //////////////////////////////////////////////
 void setup()
@@ -70,7 +80,7 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(encoderPin), ISR, RISING);
 
   initiate();
-
+  MovingPhoto();
 }
 
 void loop()
@@ -137,24 +147,49 @@ void ICACHE_RAM_ATTR ISR()
 void MovingPhoto()
 {
 bool isWorkDone = false;
+
 if(!initiateComplete)initiate();
+
+for(int i = 0 ; i < MovingPhotoSpeed ; i+=MovingPhotoAcceleration )
+{
+
+  motor_clockwise(i);
+  delay(500);
+
+}
+
+
+Serial.println("moving photo acceleration achived");
+
 while(!isWorkDone)
 {
 
-
-motor_clockwise(movingSpeed);
-
-
+if(encdCount >= stepsToTravel)
+{
+photosTaken++;
+Serial.print("Photos taken:= ");Serial.print(photosTaken);
 }
 
-
-
-}
-
-void motorStopSlowly()
+if(photosTaken >= photosPerRound)
 {
 
-for (int i = currentPWMvalueMotor ; i > 20 ;i=i-50 )
+isWorkDone = true;
+motorStopSlowly(movingSpeed);
+}
+yield();
+
+
+
+}
+Serial.println("End moving procedure");
+
+
+}
+
+void motorStopSlowly(uint16_t PwmSpeed)
+{
+
+for (int i = PwmSpeed ; i > 20 ;i=i-50 )
 {
 
 motor_clockwise(i);
@@ -164,6 +199,8 @@ delayMicroseconds(1000);
 
 Serial.print("m slow stop encode count:");Serial.println(encdCount);
 
+digitalWrite(LPWM, HIGH);
+digitalWrite(RPWM, HIGH);
 }
 
 void initiate()
@@ -201,7 +238,7 @@ isReachedStart = true;
 
 }
 
-motorStopSlowly();
+motorStopSlowly(currentPWMvalueMotor);
 
 initiateComplete = true;
 
