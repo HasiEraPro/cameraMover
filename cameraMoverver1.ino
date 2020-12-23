@@ -2,6 +2,9 @@
 #define debug  //activated debug mode,after done comment this
 #define encoderPin 12
 RCSwitch mySwitch = RCSwitch();
+
+///counted steps without offset 372,offset is 5(5 steps goes inside magnet)
+
 //////////////Settings/////////////////////
 
  ////----------pins------///////
@@ -40,14 +43,16 @@ uint16_t mspeed = 0;
 int sensorValue = 0;
 volatile uint16_t encdCount = 0;
 uint16_t currentPWMvalueMotor = 500;
+uint16_t movingSpeed = 250;
 
 bool initiateComplete = false;
-uint16_t movingSpeed = 250;
 bool isMotorRotates = false;
 bool isEncoderRotated = false;
+bool isCalibrated = false;
+
 unsigned long previousMicros;
 
-uint16_t pos1 = 0 ,pos2 =0;
+uint16_t OffsetStepCount =0,fullCalibratedStepCount=0;
 //////////////Function prototype//////////////////////
 
 void motor_clockwise(int speed);
@@ -218,23 +223,35 @@ initiateComplete = false;
 
 void initiate()
 {
+if(!isCalibrated)calibrateSteps();
+
   #ifdef debug 
-  Serial.println("Reset to home postion prcedure");
+  Serial.println("Initiation procedure start");
   #endif
 bool isReachedStart = false;
-motor_clockwise(currentPWMvalueMotor);
+bool firstContactHome =false;
+for(int i = 100 ; i < minimumMovingSpeed ; i+=10)
+{
+
+motor_clockwise(i);
+delay(1000);
+
+}
 
 while(!isReachedStart)
 {
-  yield();
-if(isEncoderRotated)
-{
-#ifdef debug
-Serial.print("count:= ");Serial.println(encdCount);
-#endif
-isEncoderRotated = false;
+yield();
 
-}
+readReedContact();
+
+//{
+//#ifdef debug
+//Serial.print("count:= ");Serial.println(encdCount);
+//#endif
+//isEncoderRotated = false;
+
+//}
+
 //sensorValue = analogRead(reedSensorPin);
 
 //if(sensorValue > 1022)
@@ -245,19 +262,30 @@ isEncoderRotated = false;
 
 //}
 
-if(encdCount > 200)
+if(sensorValue > 1022)
 {
-encdCount = 0;
-isReachedStart = true;
+  encdCount = 0;
+  isReachedStart = true;
 
 }
 
 
+
+
+
 }
 
-motorStopSlowly(currentPWMvalueMotor);
 
+motorStopSlowly(minimumMovingSpeed);
+
+Serial.println("initiation at home postion");
+Serial.println("travel counted steps and confirm");
 initiateComplete = true;
+
+
+
+
+
 
 }
 
@@ -335,9 +363,9 @@ motorStopSlowly(movingSpeed);
 void calibrateSteps()
 {
 
+Serial.println("started calibration sequence");
 
-
-for(int i = 0 ; i < minimumMovingSpeed ; i+=10)
+for(int i = 100 ; i < minimumMovingSpeed ; i+=10)
 {
 
 motor_clockwise(i);
@@ -346,10 +374,9 @@ delay(1000);
 }
 
 
-
-
 bool isWorkDone = false;
-bool homePosSet =false;
+bool FirstTimeContact = false;
+bool gettingAwayHome = false;
 
 while (!isWorkDone)
 {
@@ -357,24 +384,98 @@ while (!isWorkDone)
 
   readReedContact();
 
-  if(sensorValue >1022)
+  if(sensorValue >1022 && !FirstTimeContact && !gettingAwayHome)
   {
+    #ifdef debug
+    Serial.println("First contact with home sensor");
+    #endif
+      FirstTimeContact = true;
+      encdCount = 0;
 
-      if(!homePosSet){homePosSet = true;encdCount = 0;}
-      else{
-        pos1 = encdCount;
-        #ifdef debug
-        Serial.print("Pos1 set at :- ");Serial.println(pos1);
-        #endif
-        isWorkDone = true;
-        }
+    
+      
 
   }
+
+  if(sensorValue >1022 && !FirstTimeContact && gettingAwayHome)
+  {
+      fullCalibratedStepCount = encdCount;
+      encdCount = 0;
+
+    #ifdef debug
+    Serial.print("2nd contact with home sensor");Serial.println(fullCalibratedStepCount);
+    #endif
+
+isWorkDone = true;
+
+
+  }
+if(sensorValue < 1022 && FirstTimeContact)
+{
+    #ifdef debug
+    Serial.print("Getting away from home sensor:= ");
+    #endif
+    FirstTimeContact = false;
+    gettingAwayHome = true;
+    OffsetStepCount = encdCount;
+
+    #ifdef debug
+    Serial.println(OffsetStepCount);
+    #endif
+    encdCount = 0;
+
+
+}
+
   
 }
 
 motorStopSlowly(minimumMovingSpeed);
 
+
+isCalibrated = true;
+
+
+}
+
+void testStepCount()
+{
+Serial.println("started Testing steps sequence");
+
+encdCount = 0;
+
+for(int i = 100 ; i <= minimumMovingSpeed ; i+=10)
+{
+
+motor_clockwise(i);
+delay(1000);
+
+}
+bool isWorkDone = false;
+
+while(!isWorkDone)
+{
+
+yield();
+
+readReedContact();
+
+if(encdCount == (fullCalibratedStepCount+OffsetStepCount))
+{
+
+Serial.print("steps travelled:-");Serial.println(encdCount);
+Serial.print("Home sensor value: - ");Serial.println(sensorValue);
+isWorkDone = true;
+}
+
+
+
+
+
+
+}
+
+motorStopSlowly(minimumMovingSpeed);
 
 
 
