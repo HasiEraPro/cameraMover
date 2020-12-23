@@ -1,7 +1,7 @@
 #include <RCSwitch.h>
 #define debug  //activated debug mode,after done comment this
 #define encoderPin 12
-#define delayinAcceleration 1000 ///how much time per incresing step 
+#define delayinAcceleration 500 ///how much time per incresing step 
 #define slowDownDelay 1000      //how much time for decreasing step consider the acceleration value too
 #define defaultStartupSpeed 180 // default speed valu to startup the motor motor rotates after 200PWM
 RCSwitch mySwitch = RCSwitch();
@@ -19,7 +19,7 @@ const uint8_t RPWM = 5; // H-bridge leg 2 ->RPWM
 const uint8_t enR = 4;  // H-bridge enable pin 2 -> R_EN
 
 //Pin Kameratrigger
-const uint8_t trig = 15; //camera trigger
+const uint8_t trig = D8; //camera trigger
 
 const int reedSensorPin = A0; //without function, in the past trigger button for manual use
 //wheel encoder GPIO16(used for inerrupts) digitally D0 
@@ -33,18 +33,18 @@ uint16_t photosTaken = 0;
 uint16_t stepsToTravel = 0;
 
 //desired speed for moving photo from pwm 
-uint16_t MovingPhotoSpeed = 250;
+uint16_t MovingPhotoSpeed = 300;
 //desired speed for Still photo from pwm 
-uint16_t StillPhotoSpeed = 200;
+uint16_t StillPhotoSpeed = 300;
 //minimum moving speed because emergency stop happens;
-uint16_t minimumMovingSpeed =200;
+uint16_t minimumMovingSpeed =250;
 
 
 //how much jump steps to desired speed
-uint16_t MovingPhotoAcceleration = 25;
+uint16_t MovingPhotoAcceleration = 10;
 
 //how much jump steps to desired speed
-uint16_t stillPhotoAcceleration = 25;
+uint16_t stillPhotoAcceleration = 10;
 
 //time to stay before going to take other picture from milliseconds
 uint16_t timeToStayStopMode = 2000;
@@ -103,7 +103,7 @@ void setup()
   pinMode(enL, OUTPUT);
   pinMode(enR, OUTPUT);
   pinMode(trig, OUTPUT);
-
+  pinMode(LED_BUILTIN, OUTPUT);
   //relay open when LOW, closed when high
   digitalWrite(trig, LOW); 
   
@@ -120,8 +120,8 @@ void setup()
   //initiate();
   //MovingPhoto();
   //StillPhoto();
-calibrateSteps();
-initiate();
+//calibrateSteps();
+//initiate();
 
 }
 
@@ -135,6 +135,7 @@ if (mySwitch.available())
    
     if (mySwitch.getReceivedValue() == 1381717)
       {
+
         Serial.println("Pressed manual photo 1381717");
         takePhoto();
       }
@@ -229,6 +230,7 @@ bool isWorkDone = false;
 accelerateMotor(defaultStartupSpeed,MovingPhotoSpeed,MovingPhotoAcceleration);
 
 encdCount = 0;
+photosTaken =0;
 #ifdef debug 
 Serial.println("moving photo acceleration achived");
 #endif
@@ -243,6 +245,7 @@ while(!isWorkDone)
       #endif
       encdCount = 0;
       photosTaken++;
+      takePhoto();
 
 
     }
@@ -271,7 +274,7 @@ void motorStopSlowly(uint16_t PwmSpeed)
 #ifdef debug
 Serial.println("Started slow stop procedure");
 #endif
-for (int i = PwmSpeed ; i > 20 ;i=i-10 )
+for (int i = PwmSpeed ; i > 80 ;i=i-10 )
 {
 
 motor_clockwise(i);
@@ -351,14 +354,11 @@ while(!isWorkDone)
   {
   yield();
 
-  if(encdCount >= stepsToTravel)
+  if(encdCount >= (stepsToTravel-5))
     {
-      #ifdef debug
-      Serial.print("Count stoped at:-");Serial.println(encdCount);
-      #endif
+    
       encdCount = 0;
       photosTaken++;
-      takePhoto();
       #ifdef debug
       Serial.print("Photos taken from still:= ");Serial.println(photosTaken);
       #endif
@@ -367,6 +367,7 @@ while(!isWorkDone)
       Serial.println("stopped for flash light");
       #endif
       delay(timeToStayStopMode);
+      takePhoto();
 
       accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
 
@@ -529,8 +530,9 @@ void takePhoto()
 {
 
 digitalWrite(trig, HIGH);
-delayMicroseconds(10);
-digitalWrite(trig, LOW);
+delay(500);
+ digitalWrite(trig, LOW);
+  
 
 }
 
