@@ -1,7 +1,7 @@
 #include <RCSwitch.h>
 #define debug  //activated debug mode,after done comment this
 #define encoderPin 12
-#define delayinAcceleration 500 ///how much time per incresing step 
+#define delayinAcceleration 50 ///how much time per incresing step 
 #define slowDownDelay 1000      //how much time for decreasing step consider the acceleration value too
 #define defaultStartupSpeed 180 // default speed valu to startup the motor motor rotates after 200PWM
 RCSwitch mySwitch = RCSwitch();
@@ -27,7 +27,7 @@ const int reedSensorPin = A0;
 
 /////////////---------You can change this to your taste----------------/////////////////////////////
 //photos per one round
-uint16_t photosPerRound = 10;
+uint16_t photosPerRound = 32;
 
 //desired speed for moving photo from pwm 
 uint16_t MovingPhotoSpeed = 300;
@@ -42,10 +42,10 @@ uint16_t minimumMovingSpeed =250;
 uint16_t MovingPhotoAcceleration = 10;
 
 //how much jump steps to desired speed
-uint16_t stillPhotoAcceleration = 10;
+uint16_t stillPhotoAcceleration = 50;
 
 //time to stay before going to take other picture from milliseconds
-uint16_t timeToStayStopMode = 5000;
+uint16_t timeToStayStopMode = 6000;
 
 //////////////////--define remote control from left to right columns numbered (eg:-R1C1 >>> ROW 1,Coulmn 1) ---//////////////
 #define R1C1  1381717  // take photo manual  
@@ -347,28 +347,51 @@ void StillPhoto()
 Serial.println("Started Still photo procedure");
 #endif
 
-bool isWorkDone = false;
+
 
 if(!initiateComplete)initiate();
-
+delay((int)timeToStayStopMode/2);
+takePhoto();
+delay((int)timeToStayStopMode/2);
 stillPhotoLocked =true;
 
-accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
+accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
 
 #ifdef debug
 Serial.println("Still photo speed achived");
 #endif
+
+bool isFirstRoundGone = false;
+sensorValue = 0;
+
+while(!isFirstRoundGone)
+{
+
+  yield();
+  readReedContact();
+  if(sensorValue > 1022)
+  {
+      isFirstRoundGone = true;
+      Serial.println("First round complete Still pics");
+
+  }
+
+}
+
+stepsToTravel = (fullCalibratedStepCount+OffsetStepCount)/photosPerRound;
+Serial.print("step distance:-");Serial.println(stepsToTravel);
+bool isWorkDone = false;
 encdCount = 0;
 photosTaken =0;
 
 while(!isWorkDone)
   {
   yield();
-
-  if(encdCount >= (stepsToTravel-5))
+  
+  if(encdCount >= stepsToTravel)
     {
     
-      encdCount = 0;
+     
       
       #ifdef debug
       Serial.print("Photos taken from still:= ");Serial.println(photosTaken);
@@ -377,12 +400,14 @@ while(!isWorkDone)
       #ifdef debug
       Serial.println("stopped for flash light");
       #endif
-      delay(timeToStayStopMode);
+      delay(timeToStayStopMode/2);
       takePhoto();
+      delay(timeToStayStopMode/2);
       photosTaken++;
-
-      accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,10);
-
+      
+      encdCount = 0;
+      accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
+      
     }
 
   if(photosTaken >= photosPerRound)
