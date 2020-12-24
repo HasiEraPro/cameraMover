@@ -6,7 +6,7 @@
 #define defaultStartupSpeed 180 // default speed valu to startup the motor motor rotates after 200PWM
 RCSwitch mySwitch = RCSwitch();
 
-///counted steps without offset 372,offset is 5(5 steps goes inside magnet)
+
 
 //////////////Settings/////////////////////
 
@@ -21,24 +21,22 @@ const uint8_t enR = 4;  // H-bridge enable pin 2 -> R_EN
 //Pin Kameratrigger
 const uint8_t trig = D8; //camera trigger
 
-const int reedSensorPin = A0; //without function, in the past trigger button for manual use
-//wheel encoder GPIO16(used for inerrupts) digitally D0 
+//reed contact pin
+const int reedSensorPin = A0; 
 
-//photos per round
+
+/////////////---------You can change this to your taste----------------/////////////////////////////
+//photos per one round
 uint16_t photosPerRound = 10;
-uint16_t photosTaken = 0;
-//steps per round
-//uint16_t  stepsPerRound = 600;
-//steps to travel to take the next photo
-uint16_t stepsToTravel = 0;
 
 //desired speed for moving photo from pwm 
 uint16_t MovingPhotoSpeed = 300;
+
 //desired speed for Still photo from pwm 
 uint16_t StillPhotoSpeed = 300;
+
 //minimum moving speed because emergency stop happens;
 uint16_t minimumMovingSpeed =250;
-
 
 //how much jump steps to desired speed
 uint16_t MovingPhotoAcceleration = 10;
@@ -47,13 +45,27 @@ uint16_t MovingPhotoAcceleration = 10;
 uint16_t stillPhotoAcceleration = 10;
 
 //time to stay before going to take other picture from milliseconds
-uint16_t timeToStayStopMode = 2000;
+uint16_t timeToStayStopMode = 5000;
 
+//////////////////--define remote control from left to right columns numbered (eg:-R1C1 >>> ROW 1,Coulmn 1) ---//////////////
+#define R1C1  1381717  // take photo manual  
+#define R1C2  1381716 //calibrate
 
+#define R2C1  1394005 //initiate
+#define R2C2  1394004 //moving picture procedure
 
+#define R3C1  1397077 //till picture procedure
+#define R3C2  1397076 //emergency stop  
 
-
+#define R4C1  1397845 //not assigned
+#define R4C2  1397844 //not assigned
 ///////////////////////////////////////////
+
+///Global variables dont change////////////////////////////////
+
+uint16_t photosTaken = 0;
+//steps to travel to take the next photo
+uint16_t stepsToTravel = 0;
 
 uint16_t mspeed = 0;
 int sensorValue = 0;
@@ -71,12 +83,12 @@ bool movingPhotoLocked = false;
 bool stillPhotoLocked =false;
 bool calibrationLocked = false;
 
-
-
 unsigned long previousMicros;
 
 uint16_t OffsetStepCount =0,fullCalibratedStepCount=0;
-//////////////Function prototype//////////////////////
+
+
+//////////////Function prototype->Add the function definition here//////////////////////
 
 void motor_clockwise(int speed);
 void initiate();
@@ -112,16 +124,15 @@ void setup()
   digitalWrite(enR, HIGH);
 
   Serial.println("start Program");
-
-    //motor_clockwise(100);
-
+    
   attachInterrupt(digitalPinToInterrupt(encoderPin), ISR, RISING);
 
   //initiate();
   //MovingPhoto();
   //StillPhoto();
-//calibrateSteps();
-//initiate();
+
+calibrateSteps();
+
 
 }
 
@@ -133,41 +144,41 @@ if (mySwitch.available())
 
       ///take photo manual 
    
-    if (mySwitch.getReceivedValue() == 1381717)
+    if (mySwitch.getReceivedValue() == R1C1)
       {
 
         Serial.println("Pressed manual photo 1381717");
         takePhoto();
       }
       ///calibrate
-    if (mySwitch.getReceivedValue() == 1381716)
+    if (mySwitch.getReceivedValue() == R1C2)
       {
-        Serial.println("Pressed calibrate 1381716");
+        Serial.println("Pressed calibrate R1C2");
         if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)calibrateSteps();
       }
       //initiate
-    if (mySwitch.getReceivedValue() == 1394005)
+    if (mySwitch.getReceivedValue() == R2C1)
       {
-        Serial.println("Pressed initiate 1394005");
+        Serial.println("Pressed initiate R2C1");
         if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)initiate();
       }
       //moving picture
-    if (mySwitch.getReceivedValue() == 1394004)
+    if (mySwitch.getReceivedValue() == R2C2)
       {
-        Serial.println("Pressed moving pic 1394004");
+        Serial.println("Pressed moving pic R2C2");
         if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)MovingPhoto();
       }
         //still picture
-    if (mySwitch.getReceivedValue() == 1397077)
+    if (mySwitch.getReceivedValue() == R3C1)
       {
-        Serial.println("Pressed Still pic 1397077");
+        Serial.println("Pressed Still pic R3C1");
         if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)StillPhoto();
       }
 
       //Emergency stop
-    if (mySwitch.getReceivedValue() == 1397076)
+    if (mySwitch.getReceivedValue() == R3C2)
       {
-        Serial.println("Pressed Still pic 1397076");
+        Serial.println("Pressed Still pic R3C2");
         if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)emergencyStop();
       }
 
@@ -238,14 +249,14 @@ Serial.println("moving photo acceleration achived");
 while(!isWorkDone)
 {
 
-  if(encdCount >= stepsToTravel)
+  if(encdCount >= stepsToTravel-5)
     {
       #ifdef debug  
       Serial.print("Photos taken:= ");Serial.println(photosTaken);
       #endif
       encdCount = 0;
-      photosTaken++;
       takePhoto();
+      photosTaken++;
 
 
     }
@@ -274,7 +285,7 @@ void motorStopSlowly(uint16_t PwmSpeed)
 #ifdef debug
 Serial.println("Started slow stop procedure");
 #endif
-for (int i = PwmSpeed ; i > 80 ;i=i-10 )
+for (int i = PwmSpeed ; i > 180 ;i=i-5 )
 {
 
 motor_clockwise(i);
@@ -358,7 +369,7 @@ while(!isWorkDone)
     {
     
       encdCount = 0;
-      photosTaken++;
+      
       #ifdef debug
       Serial.print("Photos taken from still:= ");Serial.println(photosTaken);
       #endif
@@ -368,8 +379,9 @@ while(!isWorkDone)
       #endif
       delay(timeToStayStopMode);
       takePhoto();
+      photosTaken++;
 
-      accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
+      accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,10);
 
     }
 
@@ -397,7 +409,7 @@ initiateComplete = false;
 void calibrateSteps()
 {
 calibrationLocked = true;
-Serial.println("started calibration sequence");
+Serial.println("started calibration sequence please wait...");
 
 for(int i = 100 ; i < minimumMovingSpeed ; i+=10)
 {
