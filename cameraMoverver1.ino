@@ -1,9 +1,12 @@
 #include <RCSwitch.h>
-#define debug  //activated debug mode,after done comment this
+
+#define debugNo  //activated debug mode,after done comment this
 #define encoderPin 12
-#define delayinAcceleration 50 ///how much time per incresing step 
+#define delayinAcceleration 25 ///how much time per incresing step 
 #define slowDownDelay 1000      //how much time for decreasing step consider the acceleration value too
-#define defaultStartupSpeed 180 // default speed valu to startup the motor motor rotates after 200PWM
+#define defaultStartupSpeed 200 // default speed valu to startup the motor motor rotates after 200PWM
+#define stillTriggertime 500
+#define MovingTriggertime 300
 RCSwitch mySwitch = RCSwitch();
 
 
@@ -27,25 +30,25 @@ const int reedSensorPin = A0;
 
 /////////////---------You can change this to your taste----------------/////////////////////////////
 //photos per one round
-uint16_t photosPerRound = 32;
+uint16_t photosPerRound = 9;
 
 //desired speed for moving photo from pwm 
 uint16_t MovingPhotoSpeed = 300;
 
 //desired speed for Still photo from pwm 
-uint16_t StillPhotoSpeed = 300;
+uint16_t StillPhotoSpeed = 250;
 
 //minimum moving speed because emergency stop happens;
 uint16_t minimumMovingSpeed =250;
 
 //how much jump steps to desired speed
-uint16_t MovingPhotoAcceleration = 10;
+uint16_t MovingPhotoAcceleration = 50;
 
 //how much jump steps to desired speed
 uint16_t stillPhotoAcceleration = 50;
 
 //time to stay before going to take other picture from milliseconds
-uint16_t timeToStayStopMode = 6000;
+uint16_t timeToStayStopMode = 4000;
 
 //////////////////--define remote control from left to right columns numbered (eg:-R1C1 >>> ROW 1,Coulmn 1) ---//////////////
 #define R1C1  1381717  // take photo manual  
@@ -69,7 +72,7 @@ uint16_t stepsToTravel = 0;
 
 uint16_t mspeed = 0;
 int sensorValue = 0;
-volatile uint16_t encdCount = 0;
+volatile int encdCount = 0;
 uint16_t currentPWMvalueMotor = 500;
 uint16_t movingSpeed = 250;
 
@@ -85,9 +88,11 @@ bool calibrationLocked = false;
 
 unsigned long previousMicros;
 
-uint16_t OffsetStepCount =0,fullCalibratedStepCount=0;
+uint16_t OffsetStepCount =6;
+uint16_t fullCalibratedStepCount=0;
 
-
+volatile uint16_t offsetTestStep = 0;
+volatile uint16_t FullTestStep = 0;
 //////////////Function prototype->Add the function definition here//////////////////////
 
 void motor_clockwise(int speed);
@@ -130,8 +135,14 @@ void setup()
   //initiate();
   //MovingPhoto();
   //StillPhoto();
+Serial.println("waiting to power on");
+yield();
+ delay(15000);
 
 calibrateSteps();
+initiate();
+
+//StillPhoto();
 
 
 }
@@ -179,7 +190,7 @@ if (mySwitch.available())
     if (mySwitch.getReceivedValue() == R3C2)
       {
         Serial.println("Pressed Still pic R3C2");
-        if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)emergencyStop();
+        emergencyStop();
       }
 
      mySwitch.resetAvailable();
@@ -237,11 +248,16 @@ Serial.println("Started moving photo procedure");
 bool isWorkDone = false;
 
   if(!initiateComplete)initiate();
-
-accelerateMotor(defaultStartupSpeed,MovingPhotoSpeed,MovingPhotoAcceleration);
+ stepsToTravel = (fullCalibratedStepCount+OffsetStepCount)/(photosPerRound+1);
+Serial.print("step distance moving photo:-");Serial.println(stepsToTravel);
 
 encdCount = 0;
 photosTaken =0;
+takePhoto();
+delay(500);
+accelerateMotor(defaultStartupSpeed,MovingPhotoSpeed,MovingPhotoAcceleration);
+
+
 #ifdef debug 
 Serial.println("moving photo acceleration achived");
 #endif
@@ -249,19 +265,29 @@ Serial.println("moving photo acceleration achived");
 while(!isWorkDone)
 {
 
-  if(encdCount >= stepsToTravel-5)
+  if(encdCount == stepsToTravel)
     {
-      #ifdef debug  
-      Serial.print("Photos taken:= ");Serial.println(photosTaken);
-      #endif
-      encdCount = 0;
+      
+      
       takePhoto();
       photosTaken++;
+      encdCount = 0;
+
+
+    }
+     if(encdCount > stepsToTravel)
+    {
+      int error = stepsToTravel - encdCount;
+      
+      
+      takePhoto();
+      photosTaken++;
+      encdCount = 0 - error ;
 
 
     }
 
-  if(photosTaken >= photosPerRound)
+  if(photosTaken > photosPerRound)
     { 
 
       isWorkDone = true;
@@ -339,6 +365,7 @@ Serial.println("travel counted steps and confirm");
 initiateComplete = true;
 initialLocked = false;
 
+
 }
 
 void StillPhoto()
@@ -347,13 +374,17 @@ void StillPhoto()
 Serial.println("Started Still photo procedure");
 #endif
 
-
-
 if(!initiateComplete)initiate();
-delay((int)timeToStayStopMode/2);
+
+stillPhotoLocked =true;
+
+delay((int)timeToStayStopMode);
 takePhoto();
 delay((int)timeToStayStopMode/2);
-stillPhotoLocked =true;
+photosTaken = 0;
+encdCount = 0;
+stepsToTravel = (fullCalibratedStepCount+OffsetStepCount)/(photosPerRound+1);
+Serial.print("step distance:-");Serial.println(stepsToTravel);
 
 accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
 
@@ -361,34 +392,46 @@ accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
 Serial.println("Still photo speed achived");
 #endif
 
-bool isFirstRoundGone = false;
-sensorValue = 0;
 
-while(!isFirstRoundGone)
-{
 
-  yield();
-  readReedContact();
-  if(sensorValue > 1022)
-  {
-      isFirstRoundGone = true;
-      Serial.println("First round complete Still pics");
 
-  }
-
-}
-
-stepsToTravel = (fullCalibratedStepCount+OffsetStepCount)/photosPerRound;
-Serial.print("step distance:-");Serial.println(stepsToTravel);
 bool isWorkDone = false;
-encdCount = 0;
-photosTaken =0;
+
+
 
 while(!isWorkDone)
   {
   yield();
+
+
   
-  if(encdCount >= stepsToTravel)
+  if(encdCount > stepsToTravel)
+  {
+   
+    uint16_t howMuchFarError = stepsToTravel - encdCount;
+   
+      //plusError = true;
+    
+      #ifdef debug
+      Serial.print("Photos taken from still:= ");Serial.println(photosTaken);
+      #endif
+      motorStopSlowly(movingSpeed);
+      #ifdef debug
+      Serial.println("stopped for flash light");
+      #endif
+      delay(timeToStayStopMode);
+      takePhoto();
+      delay(timeToStayStopMode/2);
+      photosTaken++;
+      
+       encdCount = 0 - howMuchFarError;  
+       Serial.println("error fixed");  
+     accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
+    
+    }
+    
+    
+  if(encdCount == stepsToTravel)
     {
     
      
@@ -400,17 +443,17 @@ while(!isWorkDone)
       #ifdef debug
       Serial.println("stopped for flash light");
       #endif
-      delay(timeToStayStopMode/2);
+      delay(timeToStayStopMode);
       takePhoto();
       delay(timeToStayStopMode/2);
       photosTaken++;
       
-      encdCount = 0;
-      accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
+       encdCount = 0;    
+     accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
       
     }
 
-  if(photosTaken >= photosPerRound)
+  if(photosTaken > photosPerRound)
     {
       isWorkDone = true;
       motorStopSlowly(movingSpeed);
@@ -435,19 +478,16 @@ void calibrateSteps()
 {
 calibrationLocked = true;
 Serial.println("started calibration sequence please wait...");
-
-for(int i = 100 ; i < minimumMovingSpeed ; i+=10)
-{
-
-motor_clockwise(i);
-delay(delayinAcceleration);
-
-}
-
+encdCount = 0;
 
 bool isWorkDone = false;
 bool FirstTimeContact = false;
 bool gettingAwayHome = false;
+
+accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
+
+
+
 
 while (!isWorkDone)
 {
@@ -462,7 +502,7 @@ while (!isWorkDone)
     #endif
       FirstTimeContact = true;
       encdCount = 0;
-
+ 
     
       
 
@@ -470,18 +510,19 @@ while (!isWorkDone)
 
   if(sensorValue >1022 && !FirstTimeContact && gettingAwayHome)
   {
+    
       fullCalibratedStepCount = encdCount;
       encdCount = 0;
 
     #ifdef debug
-    Serial.print("2nd contact with home sensor");Serial.println(fullCalibratedStepCount);
+    Serial.print("2nd contact with home sensor:= ");Serial.println(fullCalibratedStepCount);
     #endif
 
 isWorkDone = true;
 
 
   }
-if(sensorValue < 1022 && FirstTimeContact)
+if(sensorValue < 800 && FirstTimeContact)
 {
     #ifdef debug
     Serial.print("Getting away from home sensor:= ");
@@ -505,10 +546,10 @@ motorStopSlowly(minimumMovingSpeed);
 
 
 isCalibrated = true;
-
-stepsToTravel =(fullCalibratedStepCount+OffsetStepCount)/photosPerRound;
-calibrationLocked = false;
 initiateComplete = false;
+//stepsToTravel =(fullCalibratedStepCount+OffsetStepCount)/photosPerRound;
+calibrationLocked = false;
+
 
 }
 
@@ -516,15 +557,10 @@ void testStepCount()
 {
 Serial.println("started Testing steps sequence");
 
+initiate();
 encdCount = 0;
-
-for(int i = 100 ; i <= minimumMovingSpeed ; i+=10)
-  {
-
-  motor_clockwise(i);
-  delay(250);
-
-  }
+bool FirstContact = true;
+accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
 bool isWorkDone = false;
 
 while(!isWorkDone)
@@ -534,13 +570,24 @@ while(!isWorkDone)
 
   readReedContact();
 
-  if(encdCount == (fullCalibratedStepCount+OffsetStepCount))
-    {
-
-      Serial.print("steps travelled:-");Serial.println(encdCount);
-      Serial.print("Home sensor value: - ");Serial.println(sensorValue);
-      isWorkDone = true;
+  if(sensorValue < 10 && FirstContact)
+  {
+    
+    Serial.print("steps count going out:");Serial.println(encdCount);
+    //isWorkDone = true;
+    offsetTestStep = encdCount;
+    encdCount = 0;
+    FirstContact = false;
     }
+
+    
+     if((sensorValue > 1023) &&(!FirstContact) )
+     {
+      FullTestStep = encdCount + offsetTestStep;
+      Serial.print("steps full count :");Serial.println(encdCount);
+      isWorkDone = true;
+      
+      }
 
   }
 
@@ -567,8 +614,9 @@ void takePhoto()
 {
 
 digitalWrite(trig, HIGH);
-delay(500);
- digitalWrite(trig, LOW);
+if(stillPhotoLocked) {delay(stillTriggertime);}
+if(movingPhotoLocked){delay(MovingTriggertime);}
+digitalWrite(trig, LOW);
   
 
 }
