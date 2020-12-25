@@ -1,8 +1,8 @@
 #include <RCSwitch.h>
 
-#define debugNo  //activated debug mode,after done comment this
+#define debug  //activated debug mode,after done comment this
 #define encoderPin 12
-#define delayinAcceleration 25 ///how much time per incresing step 
+#define delayinAcceleration 50 ///how much time per incresing step 
 #define slowDownDelay 1000      //how much time for decreasing step consider the acceleration value too
 #define defaultStartupSpeed 200 // default speed valu to startup the motor motor rotates after 200PWM
 #define stillTriggertime 500
@@ -30,7 +30,7 @@ const int reedSensorPin = A0;
 
 /////////////---------You can change this to your taste----------------/////////////////////////////
 //photos per one round
-uint16_t photosPerRound = 9;
+uint16_t photosPerRound = 31;
 
 //desired speed for moving photo from pwm 
 uint16_t MovingPhotoSpeed = 300;
@@ -139,8 +139,8 @@ Serial.println("waiting to power on");
 yield();
  delay(15000);
 
-calibrateSteps();
-initiate();
+////calibrateSteps();
+//initiate();
 
 //StillPhoto();
 
@@ -277,7 +277,7 @@ while(!isWorkDone)
     }
      if(encdCount > stepsToTravel)
     {
-      int error = stepsToTravel - encdCount;
+      int error = encdCount - stepsToTravel;
       
       
       takePhoto();
@@ -287,7 +287,7 @@ while(!isWorkDone)
 
     }
 
-  if(photosTaken > photosPerRound)
+  if(photosTaken > (photosPerRound-1))
     { 
 
       isWorkDone = true;
@@ -408,7 +408,7 @@ while(!isWorkDone)
   if(encdCount > stepsToTravel)
   {
    
-    uint16_t howMuchFarError = stepsToTravel - encdCount;
+    uint16_t howMuchFarError = encdCount - stepsToTravel;
    
       //plusError = true;
     
@@ -425,7 +425,7 @@ while(!isWorkDone)
       photosTaken++;
       
        encdCount = 0 - howMuchFarError;  
-       Serial.println("error fixed");  
+        
      accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
     
     }
@@ -453,7 +453,7 @@ while(!isWorkDone)
       
     }
 
-  if(photosTaken > photosPerRound)
+  if(photosTaken > (photosPerRound-1))
     {
       isWorkDone = true;
       motorStopSlowly(movingSpeed);
