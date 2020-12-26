@@ -107,6 +107,7 @@ void takePhoto();
 void MovingPhoto();
 void emergencyStop();
 void turnSteps(uint16_t steps);
+void checkEmergency();
 //////////////////////////////////////////////
 void setup()
 {
@@ -368,6 +369,8 @@ while(!isReachedStart)
 yield();
 
 readReedContact();
+
+checkEmergency();
 //if you found a magnetic field
 if(sensorValue > 1000)
   {
@@ -709,6 +712,28 @@ workdone = true;
 
 motorStopSlowly(MovingPhotoSpeed);
 
+
+
+}
+
+void checkEmergency()
+{
+
+if (mySwitch.available()) 
+{
+
+if (mySwitch.getReceivedValue() == R3C2)
+      {
+        Serial.println("Pressed Still pic R3C2");
+
+        isReachedStart = true;
+      }
+
+     mySwitch.resetAvailable();
+
+
+
+}
 
 
 }
