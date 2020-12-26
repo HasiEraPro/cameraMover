@@ -36,10 +36,10 @@ uint16_t photosPerRound = 31;
 uint16_t MovingPhotoSpeed = 300;
 
 //desired speed for Still photo from pwm 
-uint16_t StillPhotoSpeed = 250;
+uint16_t StillPhotoSpeed = 300;
 
 //minimum moving speed because emergency stop happens;
-uint16_t minimumMovingSpeed =250;
+uint16_t minimumMovingSpeed =300;
 
 //how much jump steps to desired speed
 uint16_t MovingPhotoAcceleration = 50;
@@ -142,10 +142,10 @@ Serial.println("waiting to power on");
  delay(15000);
 
 ////calibrateSteps();
-//initiate();
+initiate();
 
 //StillPhoto();
-MovingPhoto();
+//MovingPhoto();
 
 }
 
@@ -308,6 +308,7 @@ isEncoderRotated = false;
 
 }
 motorStopSlowly(movingSpeed);
+takePhoto();
 movingPhotoLocked = false;
 initiateComplete = false;
 Serial.println("End moving procedure");
@@ -424,18 +425,9 @@ takePhoto();
 delay((int)timeToStayStopMode/2);
 photosTaken = 0;
 encdCount = 0;
-stepsToTravel = (fullCalibratedStepCount+OffsetStepCount)/(photosPerRound+1);
+stepsToTravel = round(380.0/(photosPerRound+1));
 Serial.print("step distance:-");Serial.println(stepsToTravel);
-
 accelerateMotor(defaultStartupSpeed,StillPhotoSpeed,stillPhotoAcceleration);
-
-#ifdef debug
-Serial.println("Still photo speed achived");
-#endif
-
-
-
-
 bool isWorkDone = false;
 
 
