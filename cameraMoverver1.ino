@@ -51,17 +51,17 @@ uint16_t stillPhotoAcceleration = 50;
 uint16_t timeToStayStopMode = 4000;
 
 //////////////////--define remote control from left to right columns numbered (eg:-R1C1 >>> ROW 1,Coulmn 1) ---//////////////
-#define R1C1  1381717  // take photo manual  
-#define R1C2  1381716 //calibrate
+#define R1C1  1381717  // initialise  
+#define R1C2  1381716 //take pic
 
-#define R2C1  1394005 //initiate
+#define R2C1  1394005 //still pic mode
 #define R2C2  1394004 //moving picture procedure
 
 #define R3C1  1397077 //till picture procedure
 #define R3C2  1397076 //emergency stop  
 
 #define R4C1  1397845 //not assigned
-#define R4C2  1397844 //not assigned
+#define R4C2  1397844 //emergency stop
 ///////////////////////////////////////////
 
 ///Global variables dont change////////////////////////////////
@@ -69,12 +69,10 @@ uint16_t timeToStayStopMode = 4000;
 uint16_t photosTaken = 0;
 //steps to travel to take the next photo
 uint16_t stepsToTravel = 0;
+uint16_t movingSpeed = 250;
 
-uint16_t mspeed = 0;
 int sensorValue = 0;
 volatile int encdCount = 0;
-uint16_t currentPWMvalueMotor = 500;
-uint16_t movingSpeed = 250;
 
 bool initiateComplete = false;
 bool isMotorRotates = false;
@@ -88,26 +86,18 @@ bool calibrationLocked = false;
 
 unsigned long previousMicros;
 
-uint16_t OffsetStepCount =6;
-uint16_t fullCalibratedStepCount=0;
-
-volatile uint16_t offsetTestStep = 0;
-volatile uint16_t FullTestStep = 0;
-int initialError = 0;
-//////////////Function prototype->Add the function definition here//////////////////////
+/////////////Function prototype->Add the function definition here//////////////////////
 
 void motor_clockwise(int speed);
 void initiate();
 void motorStopSlowly(uint16_t PwmSpeed);
 void ICACHE_RAM_ATTR ISR();
 void StillPhoto();
-void calibrateSteps();
 void accelerateMotor(uint16_t startSpeed,uint16_t finalSpeed,uint16_t increment);
 void takePhoto();
 void MovingPhoto();
-void emergencyStop();
 void turnSteps(uint16_t steps);
-void checkEmergency();
+void checkEmergency(bool & flag);
 //////////////////////////////////////////////
 void setup()
 {
@@ -135,18 +125,13 @@ void setup()
     
   attachInterrupt(digitalPinToInterrupt(encoderPin), ISR, RISING);
 
-  //initiate();
-  //MovingPhoto();
-  //StillPhoto();
+
 Serial.println("waiting to power on");
 
  delay(15000);
 
-////calibrateSteps();
 initiate();
 
-//StillPhoto();
-//MovingPhoto();
 
 }
 
@@ -156,25 +141,26 @@ void loop()
 if (mySwitch.available()) 
 {
 
-      ///take photo manual 
-   
-    if (mySwitch.getReceivedValue() == R1C1)
+      //initialise
+       if (mySwitch.getReceivedValue() == R1C1)
       {
 
-        Serial.println("Pressed manual photo 1381717");
-        takePhoto();
+        Serial.println("Pressed initiate R1C1");
+        if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)initiate();
       }
-      ///calibrate
+   
+      //manul shot
     if (mySwitch.getReceivedValue() == R1C2)
       {
-        Serial.println("Pressed calibrate R1C2");
-        if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)calibrateSteps();
+        Serial.println("Pressed manual shot  R2C1");
+        takePhoto();
       }
-      //initiate
+
+      //still pic
     if (mySwitch.getReceivedValue() == R2C1)
       {
-        Serial.println("Pressed initiate R2C1");
-        if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)initiate();
+        Serial.println("Pressed Still pic R3C1");
+        if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)StillPhoto();
       }
       //moving picture
     if (mySwitch.getReceivedValue() == R2C2)
@@ -185,17 +171,20 @@ if (mySwitch.available())
         //still picture
     if (mySwitch.getReceivedValue() == R3C1)
       {
-        Serial.println("Pressed Still pic R3C1");
-        if(!calibrationLocked && !initialLocked && !movingPhotoLocked && !stillPhotoLocked)StillPhoto();
+        Serial.println("Pressed R3C1 not assigned");
       }
-
-      //Emergency stop
+           //still picture
     if (mySwitch.getReceivedValue() == R3C2)
       {
-        Serial.println("Pressed Still pic R3C2");
-        emergencyStop();
+        Serial.println("Pressed R3C2 not assigned");
       }
-
+   //Emergency stop
+    if (mySwitch.getReceivedValue() == R4C1)
+      {
+        Serial.println("Pressed R3C2 not assigned ");
+      
+      }
+     
      mySwitch.resetAvailable();
   }
 }
@@ -330,10 +319,6 @@ motor_clockwise(i);
 delayMicroseconds(slowDownDelay);
 }
 
-#ifdef debug
-//Serial.print("Moving to slow stop encode count:");Serial.println(encdCount);
-#endif
-
 digitalWrite(LPWM, HIGH);
 digitalWrite(RPWM, HIGH);
 initiateComplete = false;
@@ -370,7 +355,7 @@ yield();
 
 readReedContact();
 
-checkEmergency();
+checkEmergency(&isReachedStart);
 //if you found a magnetic field
 if(sensorValue > 1000)
   {
@@ -510,124 +495,6 @@ stillPhotoLocked =false;
 initiateComplete = false;
 }
 
-void calibrateSteps()
-{
-
-calibrationLocked = true;
-
-Serial.println("started calibration sequence please wait...");
-
-encdCount = 0;
-
-bool isWorkDone = false;
-bool FirstTimeContact = false;
-bool gettingAwayHome = false;
-
-accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
-
-while (!isWorkDone)
-{
-  yield();
-
-  readReedContact();
-
-  if(sensorValue >1022 && !FirstTimeContact && !gettingAwayHome)
-  {
-    #ifdef debug
-    Serial.println("First contact with home sensor");
-    #endif
-      FirstTimeContact = true;
-      encdCount = 0;
- 
-    
-      
-
-  }
-
-  if(sensorValue >1022 && !FirstTimeContact && gettingAwayHome)
-  {
-    
-      fullCalibratedStepCount = encdCount;
-      encdCount = 0;
-
-    #ifdef debug
-    Serial.print("2nd contact with home sensor:= ");Serial.println(fullCalibratedStepCount);
-    #endif
-
-isWorkDone = true;
-
-
-  }
-if(sensorValue < 800 && FirstTimeContact)
-{
-    #ifdef debug
-    Serial.print("Getting away from home sensor:= ");
-    #endif
-    FirstTimeContact = false;
-    gettingAwayHome = true;
-    OffsetStepCount = 6;
-
-    #ifdef debug
-    Serial.println(OffsetStepCount);
-    #endif
-    encdCount = 0;
-
-
-}
-
-  
-}
-
-motorStopSlowly(minimumMovingSpeed);
-
-
-isCalibrated = true;
-initiateComplete = false;
-//stepsToTravel =(fullCalibratedStepCount+OffsetStepCount)/photosPerRound;
-calibrationLocked = false;
-
-
-}
-
-void testStepCount()
-{
-  int offsetValueTest = 0;
-Serial.println("started Testing steps sequence");
-
-initiate();
-
-bool FirstContact = true;
-
-accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
-bool isWorkDone = false;
-
-while(!isWorkDone)
-  {
-
-  yield(); 
-  readReedContact();
-  
-  if(!sensorValue && FirstContact)
-  {
-
-      FirstContact = false;
-
-  }
-  if(sensorValue && !FirstContact)
-  {
-
-        isWorkDone = true;
-  }
-
-  
-
-  }
-
-motorStopSlowly(minimumMovingSpeed);
-
-Serial.print("travelled steps for stop:-");Serial.println(encdCount);
-
-}
 
 void accelerateMotor(uint16_t startSpeed,uint16_t finalSpeed,uint16_t increment)
 {
@@ -649,45 +516,12 @@ void takePhoto()
 digitalWrite(trig, HIGH);
 if(stillPhotoLocked) {delay(stillTriggertime);}
 if(movingPhotoLocked){delay(MovingTriggertime);}
+if(!stillPhotoLocked && !movingPhotoLocked){{delay(stillTriggertime);}}
 digitalWrite(trig, LOW);
   
 
 }
 
-void emergencyStop()
-{
-
-
-
-if(stillPhotoLocked)
-{
-
-  motorStopSlowly(StillPhotoSpeed);
-  stillPhotoLocked = false;
-  initiateComplete = false;
-
-
-}
-else if(movingPhotoLocked)
-{
-
-motorStopSlowly(MovingPhotoSpeed);
-movingPhotoLocked = false;
-initiateComplete = false;
-
-}
-else
-{
-  motorStopSlowly(minimumMovingSpeed);
-initiateComplete = false;
-movingPhotoLocked = false;
-stillPhotoLocked = false;
-}
-
-
-
-
-}
 
 void turnSteps(uint16_t steps)
 {
@@ -716,17 +550,20 @@ motorStopSlowly(MovingPhotoSpeed);
 
 }
 
-void checkEmergency()
+void checkEmergency(bool *flag)
 {
 
 if (mySwitch.available()) 
 {
 
-if (mySwitch.getReceivedValue() == R3C2)
+if (mySwitch.getReceivedValue() == R4C2)
       {
         Serial.println("Pressed Still pic R3C2");
 
-        isReachedStart = true;
+        *flag = true;
+        initiateComplete = false;
+        movingPhotoLocked = false;
+        stillPhotoLocked = false;
       }
 
      mySwitch.resetAvailable();
