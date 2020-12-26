@@ -6,11 +6,15 @@
 #define slowDownDelay 1000      //how much time for decreasing step consider the acceleration value too
 #define defaultStartupSpeed 200 // default speed valu to startup the motor motor rotates after 200PWM
 #define stillTriggertime 500
-#define MovingTriggertime 300
+#define MovingTriggertime 200
 RCSwitch mySwitch = RCSwitch();
 
 
 
+
+
+/////////////---------You can change this to your taste----------------/////////////////////////////
+//photos per
 //////////////Settings/////////////////////
 
  ////----------pins------///////
@@ -26,10 +30,6 @@ const uint8_t trig = D8; //camera trigger
 
 //reed contact pin
 const int reedSensorPin = A0; 
-
-
-/////////////---------You can change this to your taste----------------/////////////////////////////
-//photos per one round
 uint16_t photosPerRound = 31;
 
 //desired speed for moving photo from pwm 
@@ -93,6 +93,7 @@ uint16_t fullCalibratedStepCount=0;
 
 volatile uint16_t offsetTestStep = 0;
 volatile uint16_t FullTestStep = 0;
+int initialError = 0;
 //////////////Function prototype->Add the function definition here//////////////////////
 
 void motor_clockwise(int speed);
@@ -105,6 +106,7 @@ void accelerateMotor(uint16_t startSpeed,uint16_t finalSpeed,uint16_t increment)
 void takePhoto();
 void MovingPhoto();
 void emergencyStop();
+void turnSteps(uint16_t steps);
 //////////////////////////////////////////////
 void setup()
 {
@@ -136,14 +138,14 @@ void setup()
   //MovingPhoto();
   //StillPhoto();
 Serial.println("waiting to power on");
-yield();
+
  delay(15000);
 
 ////calibrateSteps();
 //initiate();
 
 //StillPhoto();
-
+MovingPhoto();
 
 }
 
@@ -242,36 +244,42 @@ void ICACHE_RAM_ATTR ISR()
 void MovingPhoto()
 {
 
+if(!initiateComplete)initiate();
+
 movingPhotoLocked = true;
 
 Serial.println("Started moving photo procedure");
-bool isWorkDone = false;
 
-  if(!initiateComplete)initiate();
- stepsToTravel = (fullCalibratedStepCount+OffsetStepCount)/(photosPerRound+1);
+
+  Serial.print("Full steps:");Serial.println("380");
+ stepsToTravel = round((380.0)/(photosPerRound+1));
 Serial.print("step distance moving photo:-");Serial.println(stepsToTravel);
 
 encdCount = 0;
 photosTaken =0;
 takePhoto();
-delay(500);
+delay(1000);
 accelerateMotor(defaultStartupSpeed,MovingPhotoSpeed,MovingPhotoAcceleration);
 
-
-#ifdef debug 
-Serial.println("moving photo acceleration achived");
-#endif
+bool isWorkDone = false;
 
 while(!isWorkDone)
 {
+yield();
 
+if(isEncoderRotated)
+{
+Serial.print("count:-");Serial.println(encdCount);
+isEncoderRotated = false;
+}
   if(encdCount == stepsToTravel)
     {
       
-      
+      encdCount = 0;
       takePhoto();
       photosTaken++;
-      encdCount = 0;
+      Serial.print("Photo count:= ");Serial.println(photosTaken);
+      
 
 
     }
@@ -282,22 +290,24 @@ while(!isWorkDone)
       
       takePhoto();
       photosTaken++;
+      Serial.print("Photo(greater count) count:= ");Serial.println(photosTaken);
       encdCount = 0 - error ;
 
 
     }
 
-  if(photosTaken > (photosPerRound-1))
+  if(photosTaken >= photosPerRound)
     { 
 
       isWorkDone = true;
-      motorStopSlowly(movingSpeed);
+      //motorStopSlowly(movingSpeed);
     }
-  yield();
+  
 
 
 
 }
+motorStopSlowly(movingSpeed);
 movingPhotoLocked = false;
 initiateComplete = false;
 Serial.println("End moving procedure");
@@ -319,7 +329,7 @@ delayMicroseconds(slowDownDelay);
 }
 
 #ifdef debug
-Serial.print("Moving to slow stop encode count:");Serial.println(encdCount);
+//Serial.print("Moving to slow stop encode count:");Serial.println(encdCount);
 #endif
 
 digitalWrite(LPWM, HIGH);
@@ -330,15 +340,26 @@ initiateComplete = false;
 void initiate()
 {
 
-if(!isCalibrated)calibrateSteps();
+//if(!isCalibrated)calibrateSteps();
 
 initialLocked = true;
   #ifdef debug 
   Serial.println("Initiation procedure start");
   #endif
 bool isReachedStart = false;
-bool firstContactHome =false;
+//before start see if that actualy we are inside the MagnetField
 
+sensorValue = 0;
+bool insideMagnetField = false;
+readReedContact();
+delay(500);
+readReedContact();
+
+if(sensorValue > 1000)
+{
+  insideMagnetField = true;
+
+}
 accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
 
 while(!isReachedStart)
@@ -346,13 +367,31 @@ while(!isReachedStart)
 yield();
 
 readReedContact();
+//if you found a magnetic field
+if(sensorValue > 1000)
+  {
+    //check you already inside a one, if it is not, this is the initial position
+    if(!insideMagnetField)
+      { 
+        //encdCount = 0;
+        isReachedStart = true;
+      }
 
-if(sensorValue > 1022)
-{
-  encdCount = 0;
-  isReachedStart = true;
+  }
 
-}
+  //if you got no magnetic field,
+if(sensorValue < 1000)
+  {
+//check did you inside a magentic field
+    if(insideMagnetField)
+      {
+        //if it is you got out from magnetic field,but not in intial position yet
+        insideMagnetField = false;
+
+      }
+
+
+  }   
 
 
 }
@@ -360,8 +399,10 @@ if(sensorValue > 1022)
 
 motorStopSlowly(minimumMovingSpeed);
 
+encdCount = 0;
+
 Serial.println("initiation at home postion");
-Serial.println("travel counted steps and confirm");
+
 initiateComplete = true;
 initialLocked = false;
 
@@ -476,8 +517,11 @@ initiateComplete = false;
 
 void calibrateSteps()
 {
+
 calibrationLocked = true;
+
 Serial.println("started calibration sequence please wait...");
+
 encdCount = 0;
 
 bool isWorkDone = false;
@@ -485,9 +529,6 @@ bool FirstTimeContact = false;
 bool gettingAwayHome = false;
 
 accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
-
-
-
 
 while (!isWorkDone)
 {
@@ -555,43 +596,41 @@ calibrationLocked = false;
 
 void testStepCount()
 {
+  int offsetValueTest = 0;
 Serial.println("started Testing steps sequence");
 
 initiate();
-encdCount = 0;
+
 bool FirstContact = true;
+
 accelerateMotor(defaultStartupSpeed,minimumMovingSpeed,10);
 bool isWorkDone = false;
 
 while(!isWorkDone)
   {
 
-  yield();
-
+  yield(); 
   readReedContact();
-
-  if(sensorValue < 10 && FirstContact)
+  
+  if(!sensorValue && FirstContact)
   {
-    
-    Serial.print("steps count going out:");Serial.println(encdCount);
-    //isWorkDone = true;
-    offsetTestStep = encdCount;
-    encdCount = 0;
-    FirstContact = false;
-    }
 
-    
-     if((sensorValue > 1023) &&(!FirstContact) )
-     {
-      FullTestStep = encdCount + offsetTestStep;
-      Serial.print("steps full count :");Serial.println(encdCount);
-      isWorkDone = true;
-      
-      }
+      FirstContact = false;
+
+  }
+  if(sensorValue && !FirstContact)
+  {
+
+        isWorkDone = true;
+  }
+
+  
 
   }
 
 motorStopSlowly(minimumMovingSpeed);
+
+Serial.print("travelled steps for stop:-");Serial.println(encdCount);
 
 }
 
@@ -608,7 +647,6 @@ for(int i = startSpeed ; i <= finalSpeed ; i+=increment)
 
 
 }
-
 
 void takePhoto()
 {
@@ -656,3 +694,29 @@ stillPhotoLocked = false;
 
 }
 
+void turnSteps(uint16_t steps)
+{
+Serial.println("turn steps procedure");
+Serial.print("turn steps:-");Serial.println(steps);
+
+encdCount = 0;
+accelerateMotor(defaultStartupSpeed,MovingPhotoSpeed,MovingPhotoAcceleration);
+bool workdone = false;
+
+while (!workdone)
+{
+  yield();
+
+if(encdCount >= steps)
+{
+workdone = true;
+
+}
+
+}
+
+motorStopSlowly(MovingPhotoSpeed);
+
+
+
+}
