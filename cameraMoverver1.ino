@@ -30,6 +30,7 @@ const uint8_t trig = D8; //camera trigger
 
 //reed contact pin
 const int reedSensorPin = A0; 
+//how much photos take per one round
 uint16_t photosPerRound = 31;
 
 //desired speed for moving photo from pwm 
@@ -42,7 +43,7 @@ uint16_t StillPhotoSpeed = 300;
 uint16_t minimumMovingSpeed =300;
 
 //how much jump steps to desired speed
-uint16_t MovingPhotoAcceleration = 50;
+uint16_t MovingPhotoAcceleration = 65;
 
 //how much jump steps to desired speed
 uint16_t stillPhotoAcceleration = 50;
@@ -179,7 +180,7 @@ if (mySwitch.available())
         Serial.println("Pressed R3C2 not assigned");
       }
    //Emergency stop
-    if (mySwitch.getReceivedValue() == R4C1)
+    if (mySwitch.getReceivedValue() == R4C2)
       {
         Serial.println("Pressed R3C2 not assigned ");
       
@@ -256,6 +257,7 @@ bool isWorkDone = false;
 while(!isWorkDone)
 {
 yield();
+checkEmergency(&isWorkDone);
 
 if(isEncoderRotated)
 {
@@ -290,7 +292,7 @@ isEncoderRotated = false;
     { 
 
       isWorkDone = true;
-      //motorStopSlowly(movingSpeed);
+      
     }
   
 
@@ -424,7 +426,7 @@ while(!isWorkDone)
   {
   yield();
 
-
+checkEmergency(&isWorkDone);
   
   if(encdCount > stepsToTravel)
   {
